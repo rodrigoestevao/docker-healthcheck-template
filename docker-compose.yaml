@@ -1,0 +1,107 @@
+services:
+
+  pgdb:
+    image: postgres:latest
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      - POSTGRES_USER=${PG_DB_USER}
+      - POSTGRES_PASSWORD=${PG_DB_PASS}
+      - POSTGRES_SERVER=${PG_DB_HOST}
+      - POSTGRES_PORT=${PG_DB_PORT}
+      - POSTGRES_DB=${PG_DB_NAME}
+    ports:
+      - ${PG_DB_PORT}:${PG_DB_PORT}
+    volumes:
+      - pgdb:/var/lib/postgresql/data
+    networks:
+      - net
+    command: >
+      -p ${PG_DB_PORT}
+    healthcheck:
+      test: [
+        "CMD",
+        "pg_isready",
+        "-h", "${PG_DB_HOST}",
+        "-p", "${PG_DB_PORT}",
+        "-U", "${PG_DB_USER}",
+        "-d", "${PG_DB_NAME}",
+        "-q"
+      ]
+      timeout: 30s
+      interval: 5s
+      retries: 10
+
+  mydb:
+    image: mysql:latest
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MY_DB_PASS}
+      - MYSQL_DATABASE=${MY_DB_NAME}
+    ports:
+      - ${MY_DB_PORT}:${MY_DB_PORT}
+    volumes:
+      - mydb:/var/lib/mysql
+    networks:
+      - net
+    healthcheck:
+      test: [
+        "CMD",
+        "mysqladmin",
+        "ping",
+        "-h", "${MY_DB_HOST}",
+        "--silent",
+      ]
+      timeout: 30s
+      interval: 5s
+      retries: 10
+    depends_on:
+      pgdb:
+        condition: service_healthy
+
+  rddb:
+    image: redis:latest
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      - REDIS_PASSWORD=${RD_DB_PASS}
+      - REDIS_PORT=${RD_DB_PORT}
+      - REDIS_DATABASES=${RD_DB_DATABASES}
+    ports:
+      - ${RD_DB_PORT}:${RD_DB_PORT}
+    volumes:
+      - rddb:/var/lib/redis/data/
+    networks:
+      - net
+    # command: redis-server --save 60 1 --loglevel warning --requirepass ${RD_DB_PASS}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      timeout: 30s
+      interval: 5s
+      retries: 10
+    depends_on:
+      mydb:
+        condition: service_healthy
+
+  app:
+    image: ubuntu
+    env_file:
+      - ./.env
+    command: >
+      sh -c "echo 'App initialized!!!' && tail -f /dev/null"
+
+    depends_on:
+      rddb:
+        condition: service_healthy
+
+volumes:
+  pgdb:
+  mydb:
+  rddb:
+
+networks:
+  net:
